@@ -11,145 +11,127 @@ from selenium.webdriver.common.action_chains import ActionChains
 from random import random
 from bs4 import BeautifulSoup
 import pandas as pd
+from datetime import datetime, timedelta
+import csv
+import os
 
-SCROLL_TIME = 1
-NUMBER_OF_SCROLLS = 10000
-NUMBER_OF_ARTICLES = 12 * (NUMBER_OF_SCROLLS + 1)
 
-def get_html():
-    """
-    Get html text of ria news
-    """
-    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-    driver.set_window_size(1920, 1080)
-    wait = WebDriverWait(driver, 10)
-    url = "https://ria.ru/economy/"
- 
-    # Открыли страницу и нажимаем поочередно на все кнопки, чтобы можно было начать бесконечно листать и считывать новости
-    driver.get(url)
-    data_param_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'За период')]")
-    data_param_btn.click()        
+class Parser():
+    def __init__(self):
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless=new") 
+        options.add_argument("--disable-gpu")
+        options.add_argument("--log-level=3")
+        options.page_load_strategy = 'eager'
+        prefs = {"profile.managed_default_content_settings.images": 2}
+        options.add_experimental_option("prefs", prefs)
 
-    #data_param_btn = driver.find_element(By.XPATH, "//*[contains(text(), ) and contain(text(), )]")
-    #time.sleep(1)
-    #param_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'За все время')]")
-    #param_btn.click()
+        self.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+        
+        self.driver.set_window_size(1920, 1080)    
+        self.wait = WebDriverWait(self.driver, 5)
+        self.SCROLL_TIME = 0.5
+        self.START_DATE = datetime(2006, 1, 1)
+        self.END_DATE = datetime(2025, 12, 20)
 
-    time.sleep(1)
-    input()
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(1)
+
+    def get_page_html(self, date):
+        """
+        Docstring для get_page_html
+
+        :param date: Date format YYYYMMDD 
+        """
+        try:
+            self.driver.get(f"https://ria.ru/economy/{date}/")
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+            show_more_div = self.wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.list-more"))
+            )
+            self.driver.execute_script("arguments[0].click();", show_more_div)
+
+            # Scroll until webpage can be scrolled
+            time.sleep(0.8)
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+            html_content = self.driver.page_source
+            return html_content
+        except Exception as e:
+            print(f"Ошибка при загрузке страницы {date}: {e}")
+            return None
+
+
+    def parse_page(self, date):
+        html_content = self.get_page_html(date)
+        if html_content is None:
+            return None
+        soup = BeautifulSoup(html_content, "lxml")
+
+        news_data = []
+        items = soup.find_all(class_="list-item")
+        for item in items:
+            text = item.find(class_="list-item__content").find(class_="list-item__title").text
+            try:
+                date, views = item.find_all(class_="list-item__info-item")
+            except ValueError:
+                print(f'Пропускаем {date}')
+                break
+            date = date.text
+            views = views.text
+            tags = item.find(class_="list-item__tags").find(class_="list-item__tags-list").find_all(class_="list-tag m-add")
+            tag_text = []
+            href = []
+            for tag in tags:
+                tag_text.append(tag.text)
+                href.append(tag['href'])
+
+            news_data.append({"text": text, 
+                              "date": date, 
+                              "views": views, 
+                              "tag_text": tag_text, 
+                              "href": href})            
+        return news_data
     
-    print("Ищем <div class='list-more ...'>...")
-    show_more_div = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "div.list-more"))
-    )
-    driver.execute_script("arguments[0].click();", show_more_div)
+
+    def parse(self):
+        def date_range(start_date, end_date):
+            for n in range(int((end_date - start_date).days) + 1):
+                yield start_date + timedelta(n)
+
+        file_exists = os.path.exists("news.csv")
+
+        with open("news.csv", "a", newline="", encoding="utf-8") as f:
+            writer = None
+            for current_date in date_range(self.START_DATE, self.END_DATE):
+                date = current_date.strftime('%Y%m%d')
+                print(date)
+
+                retries = 3
+                news_data = self.parse_page(date)
+                while retries > 0 and news_data is None:
+                    news_data = self.parse_page(date)
+
+                    if news_data is None:
+                        retries -= 1
+                        print(f"  retry... ({3 - retries}/3)")
+                        time.sleep(1)  # пауза между попытками
+
+                if news_data is None:
+                    print(f"  FAILED for {date}")
+                    continue
+
+                if not news_data:  # пустой список
+                    continue
+
+                if writer is None:
+                    writer = csv.DictWriter(f, fieldnames=news_data[0].keys())
+                    if not file_exists:
+                        writer.writeheader() 
+
+                writer.writerows(news_data)
 
 
-    for i in range(NUMBER_OF_SCROLLS):
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        print(f"Скроллов: {i} / {NUMBER_OF_SCROLLS}")
-        time.sleep(random() * SCROLL_TIME)
+parser = Parser()
+parser.parse()
+
         
-
-    time.sleep(0.5)
-    #time.sleep(10)
-    #show_more_btn.click()
-    time.sleep(10)
-    html_content = driver.page_source
-
-    with open("ria_news.html", 'w', encoding='utf8') as file:
-        file.write(html_content)
-
-    driver.quit()
-
-    return html_content
-
-
-def parse_html(page_source):
-    """
-    Parsing html, obtained in get_html
-    """
-    soup = BeautifulSoup(html, 'html.parser')
-    articles = soup.find_all('div', class_='list-item')
-
-
-
-html = get_html()
-#df = parse_html()
-
-"""
-import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
-from bs4 import BeautifulSoup
-
-from selenium.webdriver.chrome.service import Service as ChromeService
-from webdriver_manager.chrome import ChromeDriverManager
-
-def get_html():
-    """
-   # Получаем HTML страницу 
-"""
-    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-    wait = WebDriverWait(driver, 10)
-
-    print("Открываю сайт...")
-    driver.get('https://sn.ria.ru/economy/')
-
-    print("Ищу кнопку и нажимаю 'За период'...")
-        
-    button = driver.find_element(By.LINK_TEXT("За период")).click()
-    period_button = driver.find_element(By.LINK_TEXT("За все время")).click()
-
-
-get_html()
-
-
-import time 
-import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from bs4 import BeautifulSoup
-
-
-URL = 'https://ria.ru/economy/'
-SCROLL_COUNT = 5
-SCROLL_PAUSE_TIME = 2
-
-def get_page_source(url, scroll_count, pause_time):
-
-    print("Запуск...")
-    options = webdriver.ChromeOptions()
-    options.add_argument("--start-maximized")
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-
-    try:
-        driver.get(url)
-        print(f"Открыта страница: {url}")
-        print(f"Начинаю крутить страницу. Число круток: {scroll_count}")
-
-        load_more = driver.find_element(By.XPATH, '//button[contains(text(), '')]')
-        for i in range(scroll_count):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
-            time.sleep(pause_time)
-            print(f"Проктрука {i + 1}/{scroll_count}")
-        
-        print("Докрутили... Получаем страницу...")
-
-        return driver.page_source
-    
-    finally:
-        driver.quit()
-        print("Закрыли браузер")
-
-"""

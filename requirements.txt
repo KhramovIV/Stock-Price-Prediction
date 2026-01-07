@@ -1,0 +1,14 @@
+apimoex==1.4.0
+matplotlib==3.10.3
+mlflow==3.8.0
+moexalgo==2.4.1
+numpy==2.3.1
+pandas==2.3.0
+pymorphy3==2.0.6
+requests==2.32.4
+seaborn==0.13.2
+selenium==4.36.0
+torch==2.8.0
+transformers==4.57.1
+webdriver-manager==4.0.2
+
