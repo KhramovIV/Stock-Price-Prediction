@@ -1,0 +1,23 @@
+artifact_path: "file:c:/Users/\u0412\u0430\u043D\u044F/Desktop/Stock-Price_Prediction/notebooks/mlruns/1/models/m-eb9ac3a3ee2a4f829a6ac75ec1ea630c/artifacts"
+flavors:
+  python_function:
+    config:
+      device: null
+    data: data
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pytorch
+    pickle_module_name: mlflow.pytorch.pickle_module
+    python_version: 3.13.5
+  pytorch:
+    code: null
+    model_data: data
+    pytorch_version: 2.8.0+cpu
+mlflow_version: 3.8.1
+model_id: m-eb9ac3a3ee2a4f829a6ac75ec1ea630c
+model_size_bytes: 47681
+model_uuid: m-eb9ac3a3ee2a4f829a6ac75ec1ea630c
+prompts: null
+run_id: b3543e1ce22d4f768264b3e5cf4a1b26
+utc_time_created: '2026-01-24 11:22:52.714926'
